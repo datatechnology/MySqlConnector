@@ -547,7 +547,7 @@ namespace SideBySide
 
 			Assert.Equal(procedureName, row["SPECIFIC_NAME"]);
 			Assert.Equal(procedureType, row["ROUTINE_TYPE"]);
-			if (dtdIdentifier == null)
+			if (dtdIdentifier is null)
 				Assert.Equal(DBNull.Value, row["DTD_IDENTIFIER"]);
 			else
 				Assert.Equal(dtdIdentifier, ((string) row["DTD_IDENTIFIER"]).Split(' ')[0]);
@@ -556,6 +556,16 @@ namespace SideBySide
 			Assert.Equal(dataAccess, ((string) row["SQL_DATA_ACCESS"]).Replace('_', ' '));
 		}
 #endif
+
+		[Fact]
+		public void CallNonExistentStoredProcedure()
+		{
+			using (var command = new MySqlCommand("NonExistentStoredProcedure", m_database.Connection))
+			{
+				command.CommandType = CommandType.StoredProcedure;
+				Assert.Throws<MySqlException>(() => command.ExecuteNonQuery());
+			}
+		}
 
 		private static string NormalizeSpaces(string input)
 		{

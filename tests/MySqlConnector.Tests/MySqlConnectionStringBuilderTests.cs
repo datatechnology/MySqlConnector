@@ -63,10 +63,9 @@ namespace MySqlConnector.Tests
 			Assert.True(csb.TreatTinyAsBoolean);
 			Assert.False(csb.UseCompression);
 			Assert.Equal("", csb.UserID);
-#if BASELINE
 			Assert.False(csb.UseAffectedRows);
-#else
-			Assert.True(csb.UseAffectedRows);
+#if !BASELINE
+			Assert.True(csb.UseXaTransactions);
 #endif
 		}
 
@@ -106,6 +105,7 @@ namespace MySqlConnector.Tests
 					"load balance=random;" +
 					"guidformat=timeswapbinary16;" +
 					"server spn=mariadb/host.example.com@EXAMPLE.COM;" +
+					"use xa transactions=false;" +
 #endif
 					"ignore prepare=false;" +
 					"interactive=true;" +
@@ -122,7 +122,7 @@ namespace MySqlConnector.Tests
 					"Treat Tiny As Boolean=false;" +
 					"ssl mode=verifyca;" +
 					"Uid=username;" +
-					"useaffectedrows=false"
+					"useaffectedrows=true"
 			};
 			Assert.True(csb.AllowPublicKeyRetrieval);
 			Assert.True(csb.AllowUserVariables);
@@ -154,6 +154,7 @@ namespace MySqlConnector.Tests
 			Assert.Equal(MySqlLoadBalance.Random, csb.LoadBalance);
 			Assert.Equal(MySqlGuidFormat.TimeSwapBinary16, csb.GuidFormat);
 			Assert.Equal("mariadb/host.example.com@EXAMPLE.COM", csb.ServerSPN);
+			Assert.False(csb.UseXaTransactions);
 #endif
 			Assert.False(csb.IgnorePrepare);
 			Assert.True(csb.InteractiveSession);
@@ -169,7 +170,7 @@ namespace MySqlConnector.Tests
 			Assert.Equal("db-server", csb.Server);
 			Assert.False(csb.TreatTinyAsBoolean);
 			Assert.Equal(MySqlSslMode.VerifyCA, csb.SslMode);
-			Assert.False(csb.UseAffectedRows);
+			Assert.True(csb.UseAffectedRows);
 			Assert.True(csb.UseCompression);
 			Assert.Equal("username", csb.UserID);
 		}
@@ -181,6 +182,40 @@ namespace MySqlConnector.Tests
 			var csb = new MySqlConnectionStringBuilder("ssl mode=invalid;");
 			Assert.Throws<InvalidOperationException>(() => csb.SslMode);
 		}
+
+		[Fact]
+		public void ConstructWithNull()
+		{
+			var csb = new MySqlConnectionStringBuilder(default(string));
+			Assert.Equal("", csb.ConnectionString);
+		}
 #endif
+
+		[Fact]
+		public void ConstructWithEmptyString()
+		{
+			var csb = new MySqlConnectionStringBuilder("");
+			Assert.Equal("", csb.ConnectionString);
+		}
+
+		[Fact]
+		public void SetConnectionStringToNull()
+		{
+			var csb = new MySqlConnectionStringBuilder
+			{
+				ConnectionString = null,
+			};
+			Assert.Equal("", csb.ConnectionString);
+		}
+
+		[Fact]
+		public void SetConnectionStringToEmptyString()
+		{
+			var csb = new MySqlConnectionStringBuilder
+			{
+				ConnectionString = "",
+			};
+			Assert.Equal("", csb.ConnectionString);
+		}
 	}
 }

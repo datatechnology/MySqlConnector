@@ -5,9 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
-#if NET45 || NET461
 using System.Reflection;
-#endif
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Text;
@@ -30,6 +28,7 @@ namespace MySqlConnector.Utilities
 		public static string FormatInvariant(this string format, params object[] args) =>
 			string.Format(CultureInfo.InvariantCulture, format, args);
 
+#if NET45 || NET461 || NET471 || NETSTANDARD1_3 || NETSTANDARD2_0
 		public static string GetString(this Encoding encoding, ReadOnlySpan<byte> span)
 		{
 			if (span.Length == 0)
@@ -45,7 +44,6 @@ namespace MySqlConnector.Utilities
 #endif
 		}
 
-#if NET45 || NET461 || NETSTANDARD1_3 || NETSTANDARD2_0
 		public static unsafe void GetBytes(this Encoding encoding, ReadOnlySpan<char> chars, Span<byte> bytes)
 		{
 			fixed (char* charsPtr = chars)
@@ -56,7 +54,7 @@ namespace MySqlConnector.Utilities
 		}
 #endif
 
-#if NET461 || NETSTANDARD2_0
+#if NET461 || NET471 || NETSTANDARD2_0
 		public static unsafe void Convert(this Encoder encoder, ReadOnlySpan<char> chars, Span<byte> bytes, bool flush, out int charsUsed, out int bytesUsed, out bool completed)
 		{
 			fixed (char* charsPtr = chars)
@@ -236,7 +234,7 @@ namespace MySqlConnector.Utilities
 		/// <remarks><paramref name="resizableArray"/> may be <c>null</c>, in which case a new <see cref="ResizableArray{T}"/> will be allocated.</remarks>
 		public static void Resize<T>(ref ResizableArray<T> resizableArray, int newLength)
 		{
-			if (resizableArray == null)
+			if (resizableArray is null)
 				resizableArray = new ResizableArray<T>();
 			resizableArray.DoResize(newLength);
 		}
@@ -305,7 +303,7 @@ namespace MySqlConnector.Utilities
 		{
 			get
 			{
-				if (s_completedTask == null)
+				if (s_completedTask is null)
 				{
 					var tcs = new TaskCompletionSource<object>();
 					tcs.SetResult(null);
@@ -411,7 +409,7 @@ namespace MySqlConnector.Utilities
 				try
 				{
 					var property = typeof(ServicePointManager).GetProperty("DisableSystemDefaultTlsVersions", BindingFlags.NonPublic | BindingFlags.Static);
-					disableSystemDefaultTlsVersions = property == null || (property.GetValue(null) is bool b && b);
+					disableSystemDefaultTlsVersions = property is null || (property.GetValue(null) is bool b && b);
 				}
 				catch (Exception)
 				{

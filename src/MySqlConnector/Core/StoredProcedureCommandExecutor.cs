@@ -31,7 +31,7 @@ namespace MySqlConnector.Core
 			var inParams = new MySqlParameterCollection();
 			var argParamNames = new List<string>();
 			var inOutSetParams = "";
-			for (var i = 0; i < parameterCollection.Count; i++)
+			for (var i = 0; i < (parameterCollection?.Count ?? 0); i++)
 			{
 				var param = parameterCollection[i];
 				var inName = "@inParam" + i;
@@ -62,7 +62,7 @@ namespace MySqlConnector.Core
 
 			// if a return param is set, assume it is a funciton.  otherwise, assume stored procedure
 			commandText += "(" + string.Join(", ", argParamNames) +")";
-			if (returnParam == null)
+			if (returnParam is null)
 			{
 				commandText = inOutSetParams + "CALL " + commandText;
 				if (m_outParams.Count > 0)

@@ -1,3 +1,4 @@
+using System;
 using MySqlConnector.Core;
 using MySqlConnector.Protocol.Serialization;
 
@@ -5,7 +6,7 @@ namespace MySqlConnector.Protocol.Payloads
 {
 	internal static class HandshakeResponse41Payload
 	{
-		private static ByteBufferWriter CreateCapabilitiesPayload(ProtocolCapabilities serverCapabilities, ConnectionSettings cs, bool useCompression, ProtocolCapabilities additionalCapabilities=0)
+		private static ByteBufferWriter CreateCapabilitiesPayload(ProtocolCapabilities serverCapabilities, ConnectionSettings cs, bool useCompression, CharacterSet characterSet, ProtocolCapabilities additionalCapabilities = 0)
 		{
 			var writer = new ByteBufferWriter();
 
@@ -28,19 +29,19 @@ namespace MySqlConnector.Protocol.Payloads
 				(serverCapabilities & ProtocolCapabilities.DeprecateEof) |
 				additionalCapabilities));
 			writer.Write(0x4000_0000);
-			writer.Write((byte) CharacterSet.Utf8Mb4GeneralCaseInsensitive);
-			writer.Write(s_padding);
+			writer.Write((byte) characterSet);
+			writer.Write(Padding);
 
 			return writer;
 		}
 
-		public static PayloadData CreateWithSsl(ProtocolCapabilities serverCapabilities, ConnectionSettings cs, bool useCompression) =>
-			CreateCapabilitiesPayload(serverCapabilities, cs, useCompression, ProtocolCapabilities.Ssl).ToPayloadData();
+		public static PayloadData CreateWithSsl(ProtocolCapabilities serverCapabilities, ConnectionSettings cs, bool useCompression, CharacterSet characterSet) =>
+			CreateCapabilitiesPayload(serverCapabilities, cs, useCompression, characterSet, ProtocolCapabilities.Ssl).ToPayloadData();
 
-		public static PayloadData Create(InitialHandshakePayload handshake, ConnectionSettings cs, bool useCompression, byte[] connectionAttributes)
+		public static PayloadData Create(InitialHandshakePayload handshake, ConnectionSettings cs, bool useCompression, CharacterSet characterSet, byte[] connectionAttributes)
 		{
 			// TODO: verify server capabilities
-			var writer = CreateCapabilitiesPayload(handshake.ProtocolCapabilities, cs, useCompression);
+			var writer = CreateCapabilitiesPayload(handshake.ProtocolCapabilities, cs, useCompression, characterSet);
 			writer.WriteNullTerminatedString(cs.UserID);
 			var authenticationResponse = AuthenticationUtility.CreateAuthenticationResponse(handshake.AuthPluginData, 0, cs.Password);
 			writer.Write((byte) authenticationResponse.Length);
@@ -58,6 +59,7 @@ namespace MySqlConnector.Protocol.Payloads
 			return writer.ToPayloadData();
 		}
 
-		static readonly byte[] s_padding = new byte[23];
+		// NOTE: not new byte[23]; see https://github.com/dotnet/roslyn/issues/33088
+		static ReadOnlySpan<byte> Padding => new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	}
 }

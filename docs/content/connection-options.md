@@ -226,6 +226,11 @@ These are the other options that MySqlConnector supports. They are set to sensib
     e.g., as the “Program” column in “Client Connections” in <a href="https://www.mysql.com/products/workbench/">MySQL Workbench</a>.</td>
   </tr>
   <tr>
+    <td>CharSet, Character Set, CharacterSet</td>
+    <td></td>
+    <td>MySqlConnector always uses <code>utf8mb4</code> to send and receive strings from MySQL Server. This option may be specified (for backwards compatibility) but it will be ignored.</td>
+  </tr>
+  <tr>
     <td>Compress, Use Compression, UseCompression</td>
     <td>false</td>
     <td>If true (and if the server supports compression), compresses packets sent between client and server. This option is unlikely to be useful in
@@ -283,7 +288,7 @@ These are the other options that MySqlConnector supports. They are set to sensib
     <td>IgnoreCommandTransaction, Ignore Command Transaction</td>
     <td>false</td>
     <td>If <code>true</code>, the value of <code>MySqlCommand.Transaction</code> is ignored when commands are executed.
-    This matches the Connector/NET behaviour and can make porting code easier. For more information, see <a href="https://github.com/mysql-net/MySqlConnector/issues/474">Issue 474</a>.</td>
+    This matches the Connector/NET behaviour and can make porting code easier. For more information, see <a href="troubleshooting/transaction-usage/">Transaction Usage</a>.</td>
   </tr>
   <tr>
     <td>Interactive, Interactive Session, InteractiveSession</td>
@@ -340,7 +345,15 @@ These are the other options that MySqlConnector supports. They are set to sensib
   </tr>
   <tr>
     <td>Use Affected Rows, UseAffectedRows</td>
+    <td>false</td>
+    <td>When <code>false</code> (default), the connection reports found rows instead of changed (affected) rows. Set to <code>true</code> to report only the number of rows actually changed by <code>UPDATE</code> or <code>INSERT … ON DUPLICATE KEY UPDATE</code> statements.</td>
+  </tr>
+  <tr>
+    <td>Use XA Transactions, UseXaTransactions</td>
     <td>true</td>
-    <td>When false, the connection reports found rows instead of changed (affected) rows.</td>
+    <td>When <code>true</code> (default), using <code>TransactionScope</code> or <code>MySqlConnection.EnlistTransaction</code>
+    will use a <a href="https://dev.mysql.com/doc/refman/8.0/en/xa.html">XA Transaction</a>. This allows true
+    distributed transactions, but may not be compatible with server replication; there are <a href="https://dev.mysql.com/doc/refman/8.0/en/xa-restrictions.html">other limitations</a>.
+    When set to <code>false</code>, regular MySQL transactions are used, just like Connector/NET.</td>
   </tr>
 </table>

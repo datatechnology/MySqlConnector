@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,7 +17,7 @@ using MySqlConnector.Utilities;
 namespace MySql.Data.MySqlClient
 {
 	public sealed class MySqlDataReader : DbDataReader
-#if NETSTANDARD1_3 || NETSTANDARD2_0
+#if !NET45 && !NET461
 		, IDbColumnSchemaGenerator
 #endif
 	{
@@ -43,8 +44,8 @@ namespace MySql.Data.MySqlClient
 
 		public override Task<bool> NextResultAsync(CancellationToken cancellationToken)
 		{
-			Command.ResetCommandTimeout();
-			return NextResultAsync(Command.Connection.AsyncIOBehavior, cancellationToken);
+			Command?.ResetCommandTimeout();
+			return NextResultAsync(Command?.Connection?.AsyncIOBehavior ?? IOBehavior.Asynchronous, cancellationToken);
 		}
 
 		internal async Task<bool> NextResultAsync(IOBehavior ioBehavior, CancellationToken cancellationToken)
@@ -83,8 +84,8 @@ namespace MySql.Data.MySqlClient
 
 				// for any exception not created from an ErrorPayload, mark the session as failed (because we can't guarantee that all data
 				// has been read from the connection and that the socket is still usable)
-				if (mySqlException?.SqlState == null)
-					Command.Connection.Session.SetFailed(resultSet.ReadResultSetHeaderException);
+				if (mySqlException?.SqlState is null)
+					Command.Connection.SetSessionFailed(resultSet.ReadResultSetHeaderException);
 
 				throw mySqlException != null ?
 					new MySqlException(mySqlException.Number, mySqlException.SqlState, mySqlException.Message, mySqlException) :
@@ -92,12 +93,13 @@ namespace MySql.Data.MySqlClient
 			}
 
 			Command.LastInsertedId = resultSet.LastInsertId;
-			m_recordsAffected = m_recordsAffected == null ? resultSet.RecordsAffected : m_recordsAffected.Value + (resultSet.RecordsAffected ?? 0);
+			m_recordsAffected = m_recordsAffected is null ? resultSet.RecordsAffected : m_recordsAffected.Value + (resultSet.RecordsAffected ?? 0);
+			m_hasWarnings = resultSet.WarningCount != 0;
 		}
 
 		private ValueTask<ResultSet> ScanResultSetAsync(IOBehavior ioBehavior, ResultSet resultSet, CancellationToken cancellationToken)
 		{
-			if (m_resultSetBuffered == null)
+			if (m_resultSetBuffered is null)
 				return new ValueTask<ResultSet>((ResultSet)null);
 
 			if (m_resultSetBuffered.BufferState == ResultSetState.NoMoreData || m_resultSetBuffered.BufferState == ResultSetState.None)
@@ -109,7 +111,7 @@ namespace MySql.Data.MySqlClient
 			if (m_resultSetBuffered.BufferState != ResultSetState.HasMoreData)
 				throw new InvalidOperationException("Invalid state: {0}".FormatInvariant(m_resultSetBuffered.State));
 
-			if (resultSet == null)
+			if (resultSet is null)
 				resultSet = new ResultSet(this);
 			return new ValueTask<ResultSet>(ScanResultSetAsyncAwaited(ioBehavior, resultSet, cancellationToken));
 		}
@@ -147,7 +149,7 @@ namespace MySql.Data.MySqlClient
 		public override object this[string name] => GetResultSet().GetCurrentRow()[name];
 
 		public override bool HasRows => GetResultSet().HasRows;
-		public override bool IsClosed => Command == null;
+		public override bool IsClosed => Command is null;
 		public override int RecordsAffected => m_recordsAffected.GetValueOrDefault(-1);
 
 		public override int GetOrdinal(string name) => GetResultSet().GetOrdinal(name);
@@ -207,6 +209,12 @@ namespace MySql.Data.MySqlClient
 		public TimeSpan GetTimeSpan(int ordinal) => (TimeSpan) GetValue(ordinal);
 		public TimeSpan GetTimeSpan(string name) => GetTimeSpan(GetOrdinal(name));
 
+		public override Stream GetStream(int ordinal) => GetResultSet().GetCurrentRow().GetStream(ordinal);
+		public Stream GetStream(string name) => GetStream(GetOrdinal(name));
+
+		public override TextReader GetTextReader(int ordinal) => new StringReader(GetString(ordinal));
+		public TextReader GetTextReader(string name) => new StringReader(GetString(name));
+
 		public override string GetString(int ordinal) => GetResultSet().GetCurrentRow().GetString(ordinal);
 		public string GetString(string name) => GetString(GetOrdinal(name));
 
@@ -233,7 +241,7 @@ namespace MySql.Data.MySqlClient
 #if !NETSTANDARD1_3
 		public override DataTable GetSchemaTable()
 		{
-			if (m_schemaTable == null)
+			if (m_schemaTable is null)
 				m_schemaTable = BuildSchemaTable();
 			return m_schemaTable;
 		}
@@ -246,7 +254,10 @@ namespace MySql.Data.MySqlClient
 
 		public ReadOnlyCollection<DbColumn> GetColumnSchema()
 		{
-			return GetResultSet().ColumnDefinitions
+			var columnDefinitions = GetResultSet().ColumnDefinitions;
+			if (columnDefinitions is null)
+				throw new InvalidOperationException("There is no current result set.");
+			return columnDefinitions
 				.Select((c, n) => (DbColumn) new MySqlDbColumn(n, c, Connection.AllowZeroDateTime, GetResultSet().ColumnTypes[n]))
 				.ToList().AsReadOnly();
 		}
@@ -255,6 +266,10 @@ namespace MySql.Data.MySqlClient
 		{
 			if (typeof(T) == typeof(DateTimeOffset))
 				return (T) Convert.ChangeType(GetDateTimeOffset(ordinal), typeof(T));
+			if (typeof(T) == typeof(TextReader) || typeof(T) == typeof(StringReader))
+				return (T) (object) GetTextReader(ordinal);
+			if (typeof(T) == typeof(Stream))
+				return (T) (object) GetStream(ordinal);
 
 			return base.GetFieldValue<T>(ordinal);
 		}
@@ -306,7 +321,7 @@ namespace MySql.Data.MySqlClient
 		internal DataTable BuildSchemaTable()
 		{
 			var colDefinitions = GetResultSet().ColumnDefinitions;
-			if (colDefinitions == null)
+			if (colDefinitions is null)
 				return null;
 			DataTable schemaTable = new DataTable("SchemaTable");
 			schemaTable.Locale = CultureInfo.InvariantCulture;
@@ -408,7 +423,7 @@ namespace MySql.Data.MySqlClient
 			{
 				m_closed = true;
 
-				if (m_resultSet != null)
+				if (m_resultSet != null && Command.Connection.State == ConnectionState.Open)
 				{
 					Command.Connection.Session.SetTimeout(Constants.InfiniteTimeout);
 					try
@@ -427,7 +442,7 @@ namespace MySql.Data.MySqlClient
 				m_resultSetBuffered = null;
 
 				var connection = Command.Connection;
-				connection.FinishQuerying();
+				connection.FinishQuerying(m_hasWarnings);
 
 				Command.ReaderClosed();
 				if ((m_behavior & CommandBehavior.CloseConnection) != 0)
@@ -441,7 +456,7 @@ namespace MySql.Data.MySqlClient
 
 		private void VerifyNotDisposed()
 		{
-			if (Command == null)
+			if (Command is null)
 				throw new InvalidOperationException("Can't call this method when MySqlDataReader is closed.");
 		}
 
@@ -454,6 +469,7 @@ namespace MySql.Data.MySqlClient
 		readonly CommandBehavior m_behavior;
 		bool m_closed;
 		int? m_recordsAffected;
+		bool m_hasWarnings;
 		ResultSet m_resultSet;
 		ResultSet m_resultSetBuffered;
 #if !NETSTANDARD1_3

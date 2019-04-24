@@ -1,5 +1,5 @@
 sudo: required
-dist: trusty
+dist: xenial
 services: docker
 
 env:
@@ -12,7 +12,7 @@ env:
   - IMAGE=mysql:8.0
     NAME=mysql
     OMIT_FEATURES=None
-  - IMAGE=percona:5.7
+  - IMAGE=percona:5.7.22
     NAME=percona
     OMIT_FEATURES=CachingSha2Password,UuidToBin
   - IMAGE=mariadb:10.2
@@ -24,11 +24,11 @@ env:
 
 before_install:
 - .ci/docker-run.sh $IMAGE $NAME 3307 $OMIT_FEATURES
-- wget -q -O packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/14.04/packages-microsoft-prod.deb
+- wget -q -O packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/16.04/packages-microsoft-prod.deb
 - sudo dpkg -i packages-microsoft-prod.deb
 - sudo apt-get install apt-transport-https
 - sudo apt-get update
-- sudo apt-get install -y dotnet-sdk-2.1 dotnet-sharedframework-microsoft.netcore.app-1.1.2
+- sudo apt-get install -y dotnet-sdk-2.1 dotnet-sharedframework-microsoft.netcore.app-1.1.10
 
 script:
 - dotnet restore

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using MySql.Data.MySqlClient;
 using MySql.Data.Types;
 using MySqlConnector.Protocol;
@@ -12,7 +13,7 @@ namespace MySqlConnector.Core
 		public void SetData(ArraySegment<byte> data)
 		{
 			m_data = data;
-			if (m_dataOffsets == null)
+			if (m_dataOffsets is null)
 			{
 				m_dataOffsets = new int[ResultSet.ColumnDefinitions.Length];
 				m_dataLengths = new int[ResultSet.ColumnDefinitions.Length];
@@ -73,20 +74,9 @@ namespace MySqlConnector.Core
 
 		public long GetBytes(int ordinal, long dataOffset, byte[] buffer, int bufferOffset, int length)
 		{
-			if (m_dataOffsets[ordinal] == -1)
-				throw new InvalidCastException("Column is NULL.");
+			CheckBinaryColumn(ordinal);
 
-			var column = ResultSet.ColumnDefinitions[ordinal];
-			var columnType = column.ColumnType;
-			if ((column.ColumnFlags & ColumnFlags.Binary) == 0 ||
-				(columnType != ColumnType.String && columnType != ColumnType.VarString && columnType != ColumnType.TinyBlob &&
-				columnType != ColumnType.Blob && columnType != ColumnType.MediumBlob && columnType != ColumnType.LongBlob &&
-				columnType != ColumnType.Geometry))
-			{
-				throw new InvalidCastException("Can't convert {0} to bytes.".FormatInvariant(columnType));
-			}
-
-			if (buffer == null)
+			if (buffer is null)
 			{
 				// this isn't required by the DbDataReader.GetBytes API documentation, but is what mysql-connector-net does
 				// (as does SqlDataReader: http://msdn.microsoft.com/en-us/library/system.data.sqlclient.sqldatareader.getbytes.aspx)
@@ -110,7 +100,7 @@ namespace MySqlConnector.Core
 		public long GetChars(int ordinal, long dataOffset, char[] buffer, int bufferOffset, int length)
 		{
 			var value = GetString(ordinal);
-			if (buffer == null)
+			if (buffer is null)
 				return value.Length;
 
 			CheckBufferArguments(dataOffset, buffer, bufferOffset, length);
@@ -287,9 +277,21 @@ namespace MySqlConnector.Core
 			return (ulong) value;
 		}
 
-		public DateTime GetDateTime(int ordinal) => (DateTime) GetValue(ordinal);
+		public DateTime GetDateTime(int ordinal)
+		{
+			var value = GetValue(ordinal);
+			if (value is MySqlDateTime mySqlDateTime)
+				return mySqlDateTime.GetDateTime();
+			return (DateTime) value;
+		}
 
 		public DateTimeOffset GetDateTimeOffset(int ordinal) => new DateTimeOffset(DateTime.SpecifyKind(GetDateTime(ordinal), DateTimeKind.Utc));
+
+		public Stream GetStream(int ordinal)
+		{
+			CheckBinaryColumn(ordinal);
+			return new MemoryStream(m_data.Array, m_data.Offset + m_dataOffsets[ordinal], m_dataLengths[ordinal], false);
+		}
 
 		public string GetString(int ordinal) => (string) GetValue(ordinal);
 
@@ -338,7 +340,7 @@ namespace MySqlConnector.Core
 
 		protected static Guid CreateGuidFromBytes(MySqlGuidFormat guidFormat, ReadOnlySpan<byte> bytes)
 		{
-#if NET45 || NET461 || NETSTANDARD1_3 || NETSTANDARD2_0
+#if NET45 || NET461 || NET471 || NETSTANDARD1_3 || NETSTANDARD2_0
 			if (guidFormat == MySqlGuidFormat.Binary16)
 				return new Guid(new[] { bytes[3], bytes[2], bytes[1], bytes[0], bytes[5], bytes[4], bytes[7], bytes[6], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15] });
 			if (guidFormat == MySqlGuidFormat.TimeSwapBinary16)
@@ -360,6 +362,22 @@ namespace MySqlConnector.Core
 				return new Guid(bytes);
 			}
 #endif
+		}
+
+		private void CheckBinaryColumn(int ordinal)
+		{
+			if (m_dataOffsets[ordinal] == -1)
+				throw new InvalidCastException("Column is NULL.");
+
+			var column = ResultSet.ColumnDefinitions[ordinal];
+			var columnType = column.ColumnType;
+			if ((column.ColumnFlags & ColumnFlags.Binary) == 0 ||
+			    (columnType != ColumnType.String && columnType != ColumnType.VarString && columnType != ColumnType.TinyBlob &&
+			     columnType != ColumnType.Blob && columnType != ColumnType.MediumBlob && columnType != ColumnType.LongBlob &&
+			     columnType != ColumnType.Geometry))
+			{
+				throw new InvalidCastException("Can't convert {0} to bytes.".FormatInvariant(columnType));
+			}
 		}
 
 		private static void CheckBufferArguments<T>(long dataOffset, T[] buffer, int bufferOffset, int length)
